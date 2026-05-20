@@ -7,12 +7,21 @@ import { listScenarios, loadScenario } from "./scenarios/registry.js";
 function printUsage() {
   console.log(`Usage:
   writing-agent list
-  writing-agent <scenario-id> "<requirement>" [--output <dir>]
+  writing-agent <scenario-id> "<requirement>" [--output <dir>] [--input <path>]...
+
+Options:
+  --output, -o <dir>     Output directory (default: ./output). The agent's
+                         writes are sandboxed to this directory.
+  --input,  -i <path>    Extra path the agent may Read / Glob / Grep
+                         (but not write). Repeatable. Use for tender docs,
+                         reference materials, etc.
 
 Examples:
   writing-agent list
   writing-agent project-doc "为一个二手书交易小程序写一份 PRD"
   writing-agent project-doc "设计文档：消息推送服务" --output ./drafts
+  writing-agent bid-doc "针对招标文件，生成技术应答" \\
+    --input ./tender.md --input ./company-cases/
 `);
 }
 
@@ -37,6 +46,7 @@ async function main() {
     args: argv,
     options: {
       output: { type: "string", short: "o" },
+      input: { type: "string", short: "i", multiple: true },
       help: { type: "boolean", short: "h" },
     },
     allowPositionals: true,
@@ -60,8 +70,9 @@ async function main() {
   }
 
   const outputDir = values.output ?? "./output";
+  const inputPaths = values.input ?? [];
   const scenario = await loadScenario(scenarioId);
-  await runAgent({ scenario, requirement, outputDir });
+  await runAgent({ scenario, requirement, outputDir, inputPaths });
 }
 
 main().catch((err) => {

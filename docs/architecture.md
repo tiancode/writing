@@ -92,17 +92,30 @@ src/scenarios/<id>/
 
 ## CLI 沙箱模型
 
-CLI 的 `query()` 使用 `cwd: <outputDir>` + `permissionMode: "acceptEdits"`。
-含义：
+CLI 的 `query()` 使用 `cwd: <outputDir>` + `permissionMode: "acceptEdits"`
++ `hooks.PreToolUse: [pathGuard]`（见 `src/sandbox.ts`）。规则：
 
-- 默认工作目录被限定到 `--output` 指定的目录（默认 `./output/`），
-  agent 用相对路径 Read/Write 都在这个目录里。
-- 但**没有真正的沙箱**：Read/Write 仍然能用绝对路径访问 cwd 之外的文件。
-- 对 `bid-doc` / `novel` 等需要 Read 外部素材（招标文件、参考文献）的场景，
-  请用绝对路径或先把素材拷进 outputDir。
+| 工具 | 允许路径 |
+| --- | --- |
+| Write / Edit / NotebookEdit | 只能在 `outputDir` 内 |
+| Read / Glob / Grep | `outputDir` ∪ 所有 `--input <path>` |
 
-真正的路径白名单需要使用 Agent SDK 的 `canUseTool` 回调拦截工具调用，
-是未来工作。
+实现细节：
+
+- `PreToolUse` hook 在 SDK subprocess 发起任何工具调用之前同步触发，
+  与 `permissionMode` 无关（即使 acceptEdits 也会经过 hook）。
+- 拒绝时返回 `{ permissionDecision: "deny", permissionDecisionReason: "..." }`，
+  agent 收到具体原因后会自行调整 — 不需要人工介入。
+- 所有路径经 `path.resolve()` 归一化后比对，`../` 穿越在校验前已被消除。
+- **不**跟随符号链接。outputDir 里的 symlink 若指向外部文件，仍可被读到。
+  hostile input 场景需要 OS 级容器或 chroot。
+
+### `--input` 使用约定
+
+- 可重复：`--input ./a --input /abs/b/`
+- 给 agent 的系统提示里会自动加一段 "Reference Materials (read-only)" 列出
+  这些路径，模型能感知到它们存在。
+- 任何 `--input` 路径都是**只读**：Write/Edit 仍只能落在 outputDir。
 
 ## Web 输入 / 速率限制
 

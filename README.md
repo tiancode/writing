@@ -29,14 +29,18 @@
 
 ## 安全与权限提示
 
-- Agent 默认在 `--output` 指定的目录（默认 `./output/`）里 Read / Write / Edit，
-  以 `acceptEdits` 模式运行，**无人工确认**。这把默认作用域限制在了输出目录里，
-  但**不是真正的沙箱**：agent 仍可用绝对路径访问 cwd 之外的文件。
-- 因此 `bid-doc` / `novel` 读外部素材（招标书、参考资料）请用**绝对路径**，
-  或把素材拷进输出目录。
-- 若素材来源不可信，文件内容可能包含针对 LLM 的注入指令。本工具不做内容隔离，
+- **路径沙箱（CLI）**：Agent 通过 `PreToolUse` hook 强制路径白名单：
+  - **Write / Edit** 只能写 `--output` 指定的目录（默认 `./output/`）。
+  - **Read / Glob / Grep** 默认也只能访问 outputDir，要读外部素材必须用
+    `--input <path>` 明确白名单（可重复）。路径穿越 (`../`) 会在归一化后再校验，
+    无法绕过。
+- **`acceptEdits` + 沙箱组合**：拒绝路径外的写时 agent 会收到拒绝原因并自行调整，
+  不需要人工介入；允许的路径写入则不弹确认。
+- **已知边界**：沙箱不跟随符号链接（symlink 指向白名单外的文件，agent 仍能读到）。
+  对高度敏感的环境，请同时用 OS 级容器/chroot 隔离。
+- **Prompt 注入仍是真实风险**：`bid-doc` / `novel` 读取的外部素材若来源不可信，
+  其内容可能影响 agent 行为（虽然不能写到 outputDir 外，但可能误导生成结果）。
   **请只对受信任的输入使用**。
-- 想进一步加固，可通过 Agent SDK 的 `canUseTool` 回调拦截路径白名单外的文件操作（待办）。
 
 ## 快速开始
 
@@ -65,7 +69,8 @@ npm run dev project-doc "为一个二手书交易小程序写一份 PRD"
 npm run dev project-doc "设计文档：消息推送服务" --output ./drafts
 ```
 
-CLI 默认输出到 `./output/`。Agent 的工作目录会被锁到该目录里。
+CLI 默认输出到 `./output/`。Agent 的写操作被沙箱限定到该目录；
+读外部文件需要用 `--input <path>` 显式允许（可重复）。
 
 环境变量：
 
@@ -86,8 +91,8 @@ CLI 默认输出到 `./output/`。Agent 的工作目录会被锁到该目录里�
 # 项目文档
 npm run dev project-doc "为一个二手书交易小程序写一份 PRD"
 
-# 投标文档（招标文件请用绝对路径，或先拷进输出目录）
-npm run dev bid-doc "针对 /abs/path/to/tender.md 中的招标需求，生成技术应答"
+# 投标文档（外部招标文件用 --input 加入读取白名单）
+npm run dev bid-doc "针对招标文件，生成技术应答" --input ./tender.md --input ./company-cases/
 
 # 小说 — 首次启动（建立大纲、人物、世界观）
 npm run dev novel "写一个赛博朋克题材的长篇，主角是底层数据修复工"

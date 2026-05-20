@@ -40,6 +40,7 @@ describe("buildSystemAppend", () => {
 
       Save all generated documents to: /tmp/out/
       Pick a filename that reflects the document type and topic (e.g. \`prd-bookstore.md\`).
+      Writes outside this directory are blocked by the runtime sandbox.
       "
     `);
   });
@@ -47,6 +48,21 @@ describe("buildSystemAppend", () => {
   it("handles scenarios with no templates", () => {
     const out = buildSystemAppend({ ...fixture, templates: {} }, "/tmp/out");
     expect(out).toContain("(no templates registered)");
+  });
+
+  it("includes a reference-materials block when inputPaths provided", () => {
+    const out = buildSystemAppend(fixture, "/tmp/out", [
+      "/data/tender.md",
+      "/refs",
+    ]);
+    expect(out).toContain("Reference Materials (read-only)");
+    expect(out).toContain("- /data/tender.md");
+    expect(out).toContain("- /refs");
+  });
+
+  it("omits the reference-materials block when inputPaths is empty", () => {
+    const out = buildSystemAppend(fixture, "/tmp/out", []);
+    expect(out).not.toContain("Reference Materials");
   });
 });
 

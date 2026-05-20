@@ -71,13 +71,20 @@ When editing a scenario, remember it powers both surfaces. The system prompt sho
 ### CLI runtime model
 
 `src/index.ts` loads `dotenv/config` then parses argv → `src/agent.ts` calls `query()` from `@anthropic-ai/claude-agent-sdk` with:
-- `systemPrompt: { type: "preset", preset: "claude_code", append: <built prompt> }`
+- `systemPrompt: { type: "preset", preset: "claude_code", append: <built prompt> }` — the appended block includes a "Reference Materials (read-only)" section listing any `--input` paths so the agent knows where to look.
 - `allowedTools: ["Read", "Write", "Edit", "Glob", "Grep"]`
-- `cwd: <absOutput>` — the agent's working directory is locked to the resolved `--output` dir (default `./output/`)
-- `permissionMode: "acceptEdits"` — no human confirmation on file ops
-- `model: process.env.ANTHROPIC_MODEL` — optional override; otherwise inherits the SDK preset default
+- `cwd: <absOutput>` — relative paths resolve here (default `./output/`).
+- `permissionMode: "acceptEdits"` — no interactive prompts.
+- `hooks: { PreToolUse: [pathGuard] }` — see `src/sandbox.ts`. `createPathGuard({ outputDir, inputPaths })` runs **before every** Read / Write / Edit / Glob / Grep and returns `{ permissionDecision: "deny", permissionDecisionReason }` for paths outside the whitelist. The agent sees the deny reason and adapts (no human intervention needed).
+- `model: process.env.ANTHROPIC_MODEL` — optional override.
 
-`cwd: absOutput` is a soft sandbox: it scopes relative paths to the output dir, but absolute paths still work, so an injected prompt could still escape. Real path enforcement needs the SDK's `canUseTool` callback (TODO). Default output dir `./output/` is gitignored.
+Sandbox rules (enforced by `checkPath` in `src/sandbox.ts`):
+- **Write / Edit / NotebookEdit**: only inside `outputDir`. Even paths listed in `--input` are read-only.
+- **Read / Glob / Grep**: `outputDir` ∪ all `--input` paths.
+- Paths are resolved via `path.resolve` before checking, so `../` traversal is neutralized.
+- Symlinks are **not** followed during the check — a symlink inside outputDir pointing outside will still be reachable. For hostile inputs use OS-level isolation (container, chroot).
+
+Default output dir `./output/` is gitignored.
 
 ### Web runtime model
 
@@ -106,7 +113,7 @@ Web is a standard Next.js build; nothing custom.
 
 ## Things to be careful about
 
-- **CLI writes are unconfirmed within the output dir.** Agent runs with `acceptEdits` and cwd locked to `--output`. Relative paths are scoped, but absolute paths still bypass this — not a real sandbox.
+- **CLI sandbox is path-based, not symlink-aware.** Write/Edit are restricted to outputDir; Read also requires explicit `--input` whitelisting. But a symlink inside outputDir pointing elsewhere still resolves through. Use OS-level isolation for hostile inputs.
 - **External-file scenarios are vulnerable to prompt injection.** `bid-doc` and `novel` are designed to Read user-supplied files (tender docs, references). The README explicitly warns: only use with trusted inputs.
 - **Scenario edits touch both surfaces.** A change to `prompts/system.md` affects the CLI immediately and the Web UI on next request. Test both, or at minimum confirm the Web Mode Override still neutralizes any new tool-use phrasing you introduce.
 - **Web depends on `../src/scenarios` at runtime.** Don't move the scenarios directory without updating `web/lib/scenarios.ts`. The Web app is not buildable in isolation from the root `src/` tree.
