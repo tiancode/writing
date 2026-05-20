@@ -1,8 +1,11 @@
 # Writing Agent
 
-场景驱动的 AI 写作 agent，基于 [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk/overview) 构建。
+场景驱动的 AI 写作工具。一套场景定义（prompt + style + templates + form schema）同时驱动两个入口：
 
-支持：项目文档（已实现）、投标文档（规划中）、小说（规划中）。新增文体场景只需新增一个目录，不改主干代码。
+- **CLI** (`src/`)：基于 [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk/overview)，agent 可用 Read/Write 工具产出多文件。适合本地开发者用。
+- **Web UI** (`web/`)：Next.js 15，向导式界面 + 实时流式输出。基于 Anthropic Messages API，无文件系统副作用，适合多用户 SaaS 部署。**为非技术用户设计**。
+
+支持场景：项目文档、投标文档、小说。新增场景只需在 `src/scenarios/` 下新建目录（含 `meta.json` + `form.json` + `prompts/` + `templates/` + `style.md`），CLI 和 Web 都会自动注册。
 
 ## 架构
 
@@ -37,23 +40,32 @@
 
 ## 快速开始
 
+### Web UI（推荐 — 给最终用户用）
+
+```bash
+cd web
+cp .env.example .env.local   # 填 ANTHROPIC_API_KEY
+npm install
+npm run dev
+# 打开 http://localhost:3000
+```
+
+详见 [web/README.md](./web/README.md)。
+
+### CLI（开发者本地用）
+
 ```bash
 npm install
 cp .env.example .env   # 填入 ANTHROPIC_API_KEY
 ```
 
 ```bash
-# 列出可用场景
-npm run dev list
-
-# 生成一份 PRD
+npm run dev list                                       # 列出场景
 npm run dev project-doc "为一个二手书交易小程序写一份 PRD"
-
-# 指定输出目录
 npm run dev project-doc "设计文档：消息推送服务" --output ./drafts
 ```
 
-输出默认写入 `./output/`。
+CLI 默认输出到 `./output/`。
 
 ## 已支持场景
 
@@ -86,6 +98,7 @@ npm run dev novel "写第 3 章，主角与神秘客户首次接头" --output ./
 ```
 your-scenario/
 ├── meta.json              # { "description": "..." }
+├── form.json              # Web UI 表单 schema（CLI 忽略此文件）
 ├── prompts/
 │   └── system.md          # 场景专属系统提示
 ├── templates/
@@ -93,18 +106,27 @@ your-scenario/
 └── style.md               # 风格规范
 ```
 
-`registry.ts` 会在启动时自动扫描注册，无需改 TypeScript 代码。
+CLI (`src/scenarios/registry.ts`) 和 Web (`web/lib/scenarios.ts`) 都会自动扫描注册，无需改 TypeScript 代码。`form.json` 是 Web UI 必需，缺失则该场景不会出现在网页首页（CLI 仍可用）。
 
 ## 目录结构
 
 ```
 .
-├── src/
+├── src/                          # CLI (Claude Agent SDK)
 │   ├── index.ts                  # CLI 入口
 │   ├── agent.ts                  # 三层流程编排
 │   └── scenarios/
 │       ├── registry.ts           # 场景自动注册
-│       └── project-doc/          # 第一个场景
+│       └── <id>/                 # 各场景定义
+│           ├── meta.json
+│           ├── form.json         # Web UI 表单 schema
+│           ├── prompts/
+│           ├── templates/
+│           └── style.md
+├── web/                          # Web UI (Next.js + Anthropic Messages API)
+│   ├── app/                      # 页面 + API routes
+│   ├── lib/scenarios.ts          # 共享场景加载
+│   └── README.md
 ├── docs/architecture.md
-└── package.json
+└── package.json                  # CLI 包
 ```

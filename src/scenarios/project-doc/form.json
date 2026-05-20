@@ -1,0 +1,61 @@
+{
+  "title": "项目文档",
+  "subtitle": "PRD、技术设计、API 文档",
+  "icon": "📄",
+  "model": "claude-sonnet-4-6",
+  "temperature": 0.5,
+  "maxTokens": 16000,
+  "fields": [
+    {
+      "id": "doc_type",
+      "label": "文档类型",
+      "type": "select",
+      "options": [
+        "PRD 产品需求文档",
+        "技术设计文档",
+        "API 文档"
+      ],
+      "required": true,
+      "help": "选错也没关系，AI 会按你选的类型生成"
+    },
+    {
+      "id": "product_name",
+      "label": "产品 / 模块名称",
+      "type": "text",
+      "placeholder": "例如：二手书交易小程序、消息推送服务",
+      "required": true
+    },
+    {
+      "id": "background",
+      "label": "背景与目标",
+      "type": "textarea",
+      "placeholder": "为什么要做这个？想解决什么问题？衡量成功的指标是什么？",
+      "required": true,
+      "rows": 4
+    },
+    {
+      "id": "target_users",
+      "label": "目标用户 / 使用者",
+      "type": "textarea",
+      "placeholder": "谁会用？规模多大？他们的核心诉求？",
+      "required": true,
+      "rows": 3
+    },
+    {
+      "id": "core_features",
+      "label": "核心功能",
+      "type": "textarea",
+      "placeholder": "一条一行，最重要的 3-5 条即可",
+      "required": true,
+      "rows": 5
+    },
+    {
+      "id": "constraints",
+      "label": "约束与补充（可选）",
+      "type": "textarea",
+      "placeholder": "性能要求、安全合规、时间预算、技术栈偏好等",
+      "required": false,
+      "rows": 3
+    }
+  ]
+}

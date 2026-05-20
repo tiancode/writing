@@ -1,0 +1,115 @@
+{
+  "title": "小说创作",
+  "subtitle": "大纲、章节、人物卡",
+  "icon": "📖",
+  "model": "claude-sonnet-4-6",
+  "temperature": 0.8,
+  "maxTokens": 16000,
+  "fields": [
+    {
+      "id": "mode",
+      "label": "想做什么",
+      "type": "select",
+      "options": [
+        "建立大纲（新小说）",
+        "写一章正文",
+        "写一张人物卡"
+      ],
+      "required": true
+    },
+    {
+      "id": "title",
+      "label": "书名",
+      "type": "text",
+      "placeholder": "暂定名也可以",
+      "required": true
+    },
+    {
+      "id": "genre",
+      "label": "题材类型",
+      "type": "text",
+      "placeholder": "如：都市悬疑、玄幻修真、科幻短篇",
+      "required": true
+    },
+    {
+      "id": "pov",
+      "label": "视角",
+      "type": "select",
+      "options": [
+        "第一人称",
+        "第三人称限制视角",
+        "全知视角"
+      ],
+      "required": true
+    },
+    {
+      "id": "theme",
+      "label": "主题与基调",
+      "type": "textarea",
+      "placeholder": "想探讨什么？读完想让读者感受到什么？",
+      "required": true,
+      "rows": 3,
+      "showIf": { "field": "mode", "equals": "建立大纲（新小说）" }
+    },
+    {
+      "id": "protagonist_brief",
+      "label": "主角简述",
+      "type": "textarea",
+      "placeholder": "主角是谁？最大的欲望和最大的恐惧？",
+      "required": true,
+      "rows": 4,
+      "showIf": { "field": "mode", "equals": "建立大纲（新小说）" }
+    },
+    {
+      "id": "story_length",
+      "label": "目标体量",
+      "type": "select",
+      "options": ["短篇（1-3 万字）", "中篇（3-10 万字）", "长篇（10 万字+）"],
+      "required": true,
+      "showIf": { "field": "mode", "equals": "建立大纲（新小说）" }
+    },
+    {
+      "id": "chapter_number",
+      "label": "第几章",
+      "type": "text",
+      "placeholder": "如：3",
+      "required": true,
+      "showIf": { "field": "mode", "equals": "写一章正文" }
+    },
+    {
+      "id": "context_so_far",
+      "label": "故事前情",
+      "type": "textarea",
+      "placeholder": "前面发生过什么？粘贴大纲或前几章摘要。越详细一致性越好",
+      "required": true,
+      "rows": 6,
+      "showIf": { "field": "mode", "equals": "写一章正文" }
+    },
+    {
+      "id": "chapter_brief",
+      "label": "本章要点",
+      "type": "textarea",
+      "placeholder": "本章发生什么？推进哪条主线？目标字数？",
+      "required": true,
+      "rows": 4,
+      "showIf": { "field": "mode", "equals": "写一章正文" }
+    },
+    {
+      "id": "character_name",
+      "label": "人物姓名",
+      "type": "text",
+      "placeholder": "主角 / 配角 / 反派",
+      "required": true,
+      "showIf": { "field": "mode", "equals": "写一张人物卡" }
+    },
+    {
+      "id": "character_brief",
+      "label": "人物简述",
+      "type": "textarea",
+      "placeholder": "身份、出身、与主线的关系、关键特征",
+      "required": true,
+      "rows": 5,
+      "showIf": { "field": "mode", "equals": "写一张人物卡" }
+    }
+  ]
+}

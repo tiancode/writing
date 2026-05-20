@@ -1,0 +1,70 @@
+{
+  "title": "投标文档",
+  "subtitle": "技术应答、商务应答、资质响应、偏离表",
+  "icon": "📋",
+  "model": "claude-sonnet-4-6",
+  "temperature": 0.3,
+  "maxTokens": 16000,
+  "fields": [
+    {
+      "id": "doc_type",
+      "label": "要生成哪类文档",
+      "type": "select",
+      "options": [
+        "投标摘要 / 致评委",
+        "技术应答",
+        "商务应答",
+        "资质响应",
+        "偏离表"
+      ],
+      "required": true
+    },
+    {
+      "id": "project_name",
+      "label": "项目名称",
+      "type": "text",
+      "placeholder": "招标项目的官方名称",
+      "required": true
+    },
+    {
+      "id": "tender_summary",
+      "label": "招标需求摘要",
+      "type": "textarea",
+      "placeholder": "粘贴招标文件的关键评审点 / 需求清单。条数越全，应答覆盖率越高",
+      "required": true,
+      "rows": 8,
+      "help": "AI 会逐条响应。漏一条等于丢一条分"
+    },
+    {
+      "id": "company_name",
+      "label": "投标公司全称",
+      "type": "text",
+      "placeholder": "如：XX 科技股份有限公司",
+      "required": true
+    },
+    {
+      "id": "company_strengths",
+      "label": "我方优势 / 能力",
+      "type": "textarea",
+      "placeholder": "公司规模、关键资质、技术积累、过往业绩等",
+      "required": true,
+      "rows": 5
+    },
+    {
+      "id": "past_cases",
+      "label": "同类项目案例（可选）",
+      "type": "textarea",
+      "placeholder": "项目名 + 客户 + 合同金额 + 年份。越具体越好",
+      "required": false,
+      "rows": 5
+    },
+    {
+      "id": "additional",
+      "label": "其他约束（可选）",
+      "type": "textarea",
+      "placeholder": "工期限制、报价上限、特殊条款等",
+      "required": false,
+      "rows": 3
+    }
+  ]
+}
