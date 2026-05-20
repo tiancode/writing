@@ -24,6 +24,17 @@
 
 详见 [docs/architecture.md](./docs/architecture.md)。
 
+## 安全与权限提示
+
+- Agent 在 `acceptEdits` 模式下运行，会在**当前工作目录**任意位置 Read / Write / Edit，**无人工确认**。建议为每个写作项目新建独立目录后再执行，例如：
+
+  ```bash
+  mkdir -p ~/writing-projects/bookstore-prd && cd ~/writing-projects/bookstore-prd
+  npx -p @tiancode/writing-agent writing-agent project-doc "..."
+  ```
+
+- `bid-doc` / `novel` 场景会读取用户提供的外部文件（招标书、参考资料等）。若来源不可信，文件内容可能包含针对 LLM 的注入指令。本工具不做内容隔离，**请只对受信任的输入使用**。
+
 ## 快速开始
 
 ```bash

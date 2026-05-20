@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { parseArgs } from "node:util";
 import { runAgent } from "./agent.js";
 import { listScenarios, loadScenario } from "./scenarios/registry.js";
 
@@ -15,14 +16,14 @@ Examples:
 }
 
 async function main() {
-  const args = process.argv.slice(2);
+  const argv = process.argv.slice(2);
 
-  if (args.length === 0 || args[0] === "-h" || args[0] === "--help") {
+  if (argv.length === 0 || argv[0] === "-h" || argv[0] === "--help") {
     printUsage();
     return;
   }
 
-  if (args[0] === "list") {
+  if (argv[0] === "list") {
     const scenarios = await listScenarios();
     console.log("Available scenarios:\n");
     for (const s of scenarios) {
@@ -31,17 +32,33 @@ async function main() {
     return;
   }
 
-  const scenarioId = args[0];
-  const requirement = args[1];
-  const outputIdx = args.indexOf("--output");
-  const outputDir = outputIdx >= 0 ? args[outputIdx + 1] : "./output";
+  const { values, positionals } = parseArgs({
+    args: argv,
+    options: {
+      output: { type: "string", short: "o" },
+      help: { type: "boolean", short: "h" },
+    },
+    allowPositionals: true,
+  });
 
-  if (!requirement) {
-    console.error("Missing requirement.\n");
+  if (values.help) {
+    printUsage();
+    return;
+  }
+
+  const [scenarioId, requirement, ...extra] = positionals;
+  if (!scenarioId || !requirement) {
+    console.error("Missing scenario or requirement.\n");
+    printUsage();
+    process.exit(1);
+  }
+  if (extra.length > 0) {
+    console.error(`Unexpected positional arguments: ${extra.join(" ")}\n`);
     printUsage();
     process.exit(1);
   }
 
+  const outputDir = values.output ?? "./output";
   const scenario = await loadScenario(scenarioId);
   await runAgent({ scenario, requirement, outputDir });
 }
