@@ -5,6 +5,19 @@
 1. **灵活**：新增文体场景（投标、营销文案、小说……）只需新增一个目录，不改主干代码。
 2. **可控**：明确的"规划 → 写作 → 审校"三段式，便于在每段人工干预。
 3. **可追溯**：模板 + 风格规范以 Markdown 形式版本管理，文档质量演进可追溯。
+4. **多入口**：同一套场景定义同时驱动 CLI（开发者）和 Web UI（终端用户）。
+
+## 两个运行入口
+
+| 入口 | 路径 | 引擎 | 特征 |
+| --- | --- | --- | --- |
+| CLI | `src/` | `@anthropic-ai/claude-agent-sdk` | Agent 可用 Read/Write/Edit/Glob/Grep 工具，多文件落盘 |
+| Web | `web/` | `@anthropic-ai/sdk`（Messages API） | SSE 流式，无文件系统副作用，支持续写（单文档多轮迭代）|
+
+两个入口共享 `src/scenarios/<id>/` 下的 `system.md` + `style.md` + `templates/`。
+Web 额外要求 `form.json`（描述表单字段）。Web 在拼接系统提示时追加
+**"Web Mode Override"** 段，强制 agent 直接产出 Markdown 而非调用工具，
+并跳过三段式中的 Plan 阶段（除非必须提澄清问题）。
 
 ## 三层流程
 
@@ -76,3 +89,27 @@ src/scenarios/<id>/
 - 写作层需要并行处理 >5 个章节（用 `Task` 子 agent 并行）
 - 审校层需要独立的 LLM 调用以避免"自欺欺人"（独立 review agent）
 - 场景内部存在显著异构的子任务（如投标的"资质匹配"vs"技术应答"）
+
+## CLI 沙箱模型
+
+CLI 的 `query()` 使用 `cwd: <outputDir>` + `permissionMode: "acceptEdits"`。
+含义：
+
+- 默认工作目录被限定到 `--output` 指定的目录（默认 `./output/`），
+  agent 用相对路径 Read/Write 都在这个目录里。
+- 但**没有真正的沙箱**：Read/Write 仍然能用绝对路径访问 cwd 之外的文件。
+- 对 `bid-doc` / `novel` 等需要 Read 外部素材（招标文件、参考文献）的场景，
+  请用绝对路径或先把素材拷进 outputDir。
+
+真正的路径白名单需要使用 Agent SDK 的 `canUseTool` 回调拦截工具调用，
+是未来工作。
+
+## Web 输入 / 速率限制
+
+`web/app/api/generate/route.ts` 包含三层保护，仅适合单实例部署：
+
+- 单 IP 每小时请求数上限（内存桶，进程重启即清空）
+- 单次请求总字符上限（formData + 续写历史）
+- 单会话续写轮数上限
+
+生产环境多实例部署应替换为 Redis 限流 + 边缘 WAF。

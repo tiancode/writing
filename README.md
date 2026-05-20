@@ -29,14 +29,14 @@
 
 ## 安全与权限提示
 
-- Agent 在 `acceptEdits` 模式下运行，会在**当前工作目录**任意位置 Read / Write / Edit，**无人工确认**。建议为每个写作项目新建独立目录后再执行，例如：
-
-  ```bash
-  mkdir -p ~/writing-projects/bookstore-prd && cd ~/writing-projects/bookstore-prd
-  npx -p @tiancode/writing-agent writing-agent project-doc "..."
-  ```
-
-- `bid-doc` / `novel` 场景会读取用户提供的外部文件（招标书、参考资料等）。若来源不可信，文件内容可能包含针对 LLM 的注入指令。本工具不做内容隔离，**请只对受信任的输入使用**。
+- Agent 默认在 `--output` 指定的目录（默认 `./output/`）里 Read / Write / Edit，
+  以 `acceptEdits` 模式运行，**无人工确认**。这把默认作用域限制在了输出目录里，
+  但**不是真正的沙箱**：agent 仍可用绝对路径访问 cwd 之外的文件。
+- 因此 `bid-doc` / `novel` 读外部素材（招标书、参考资料）请用**绝对路径**，
+  或把素材拷进输出目录。
+- 若素材来源不可信，文件内容可能包含针对 LLM 的注入指令。本工具不做内容隔离，
+  **请只对受信任的输入使用**。
+- 想进一步加固，可通过 Agent SDK 的 `canUseTool` 回调拦截路径白名单外的文件操作（待办）。
 
 ## 快速开始
 
@@ -65,7 +65,12 @@ npm run dev project-doc "为一个二手书交易小程序写一份 PRD"
 npm run dev project-doc "设计文档：消息推送服务" --output ./drafts
 ```
 
-CLI 默认输出到 `./output/`。
+CLI 默认输出到 `./output/`。Agent 的工作目录会被锁到该目录里。
+
+环境变量：
+
+- `ANTHROPIC_API_KEY`（必需）— 从 `.env` 自动加载
+- `ANTHROPIC_MODEL`（可选）— 覆盖默认模型，例如 `ANTHROPIC_MODEL=claude-opus-4-7 npm run dev project-doc "..."`
 
 ## 已支持场景
 
@@ -81,8 +86,8 @@ CLI 默认输出到 `./output/`。
 # 项目文档
 npm run dev project-doc "为一个二手书交易小程序写一份 PRD"
 
-# 投标文档（建议先把招标文件放进可访问路径，让 agent Read 后再生成应答矩阵）
-npm run dev bid-doc "针对 ./tender.md 中的招标需求，生成技术应答"
+# 投标文档（招标文件请用绝对路径，或先拷进输出目录）
+npm run dev bid-doc "针对 /abs/path/to/tender.md 中的招标需求，生成技术应答"
 
 # 小说 — 首次启动（建立大纲、人物、世界观）
 npm run dev novel "写一个赛博朋克题材的长篇，主角是底层数据修复工"

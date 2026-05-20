@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import "dotenv/config";
 import { parseArgs } from "node:util";
 import { runAgent } from "./agent.js";
 import { listScenarios, loadScenario } from "./scenarios/registry.js";

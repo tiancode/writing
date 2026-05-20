@@ -70,26 +70,31 @@ When editing a scenario, remember it powers both surfaces. The system prompt sho
 
 ### CLI runtime model
 
-`src/index.ts` parses argv → `src/agent.ts` calls `query()` from `@anthropic-ai/claude-agent-sdk` with:
+`src/index.ts` loads `dotenv/config` then parses argv → `src/agent.ts` calls `query()` from `@anthropic-ai/claude-agent-sdk` with:
 - `systemPrompt: { type: "preset", preset: "claude_code", append: <built prompt> }`
 - `allowedTools: ["Read", "Write", "Edit", "Glob", "Grep"]`
-- `cwd: process.cwd()`
-- `permissionMode: "acceptEdits"` — **the agent writes anywhere in cwd with no human confirmation**
+- `cwd: <absOutput>` — the agent's working directory is locked to the resolved `--output` dir (default `./output/`)
+- `permissionMode: "acceptEdits"` — no human confirmation on file ops
+- `model: process.env.ANTHROPIC_MODEL` — optional override; otherwise inherits the SDK preset default
 
-Default output dir is `./output/` (gitignored). The agent is told to save into that directory via the appended system prompt, but `acceptEdits` does not enforce it — when developing, run from a throwaway directory if the agent's output might collide with the repo.
+`cwd: absOutput` is a soft sandbox: it scopes relative paths to the output dir, but absolute paths still work, so an injected prompt could still escape. Real path enforcement needs the SDK's `canUseTool` callback (TODO). Default output dir `./output/` is gitignored.
 
 ### Web runtime model
 
 `web/app/api/generate/route.ts` is a Node-runtime SSE endpoint (not Edge — needed for streaming + the Anthropic SDK). Flow:
-1. Receives `{ scenarioId, formData }`.
-2. Validates required fields (respecting `showIf` conditional visibility) via the form schema.
-3. `buildRequirement()` formats form values into a labeled requirement string.
-4. `buildSystemPrompt()` composes scenario system.md + style + templates + the Web Mode Override.
-5. Streams `messages.stream()` text deltas as SSE events: `start` (scenario id), `text` (deltas), `done` (token usage + stop reason), or `error` (message).
+1. Per-IP rate limit (in-memory, single-instance only — `RATE_LIMIT_PER_HOUR`).
+2. Receives `{ scenarioId, formData, followups? }`.
+3. Validates required fields (respecting `showIf` conditional visibility), input character cap (`MAX_INPUT_CHARS`), and followup count cap (`MAX_FOLLOWUPS`).
+4. `buildRequirement()` formats form values into a labeled requirement string.
+5. `buildSystemPrompt()` composes scenario system.md + style + templates + the Web Mode Override. The system prompt is sent with `cache_control: { type: "ephemeral" }` for prompt caching — repeated calls to the same scenario reuse the system prompt cache.
+6. Builds messages array: initial user requirement, then for each followup: `assistant(prev output)` + `user(new instruction)`.
+7. Streams `messages.stream()` text deltas as SSE events: `start`, `text`, `done` (carries input/output/cache tokens), or `error`.
 
 The Anthropic client is constructed in `web/lib/anthropic.ts`; a missing `ANTHROPIC_API_KEY` throws there and surfaces as a 503 from the route.
 
-Model / temperature / max tokens are **per-scenario**, set in `form.json` (e.g. `novel` uses higher temperature). The form schema also describes the field UI: `type`, `placeholder`, `required`, `rows`, `showIf` for conditional fields, etc. — see `web/lib/scenarios.ts` `FormField` for the contract.
+Model / temperature / max tokens are **per-scenario** (set in `form.json`). Model can be globally overridden via `ANTHROPIC_MODEL` env var. The form schema also describes the field UI: `type`, `placeholder`, `required`, `rows`, `showIf` for conditional fields — see `web/lib/scenarios.ts` `FormField`.
+
+Client (`web/app/[scenario]/scenario-form.tsx`) uses `useDeferredValue(output)` for the markdown renderer to keep streaming smooth on long documents. The followup textarea appears after `done` and lets the user iteratively refine without re-filling the form (capped at 5 rounds to bound context growth).
 
 ## Build artifacts
 
@@ -101,7 +106,9 @@ Web is a standard Next.js build; nothing custom.
 
 ## Things to be careful about
 
-- **CLI writes are unconfirmed.** The agent runs with `acceptEdits` against `process.cwd()`. Don't run it from the repo root unless you mean to.
+- **CLI writes are unconfirmed within the output dir.** Agent runs with `acceptEdits` and cwd locked to `--output`. Relative paths are scoped, but absolute paths still bypass this — not a real sandbox.
 - **External-file scenarios are vulnerable to prompt injection.** `bid-doc` and `novel` are designed to Read user-supplied files (tender docs, references). The README explicitly warns: only use with trusted inputs.
 - **Scenario edits touch both surfaces.** A change to `prompts/system.md` affects the CLI immediately and the Web UI on next request. Test both, or at minimum confirm the Web Mode Override still neutralizes any new tool-use phrasing you introduce.
 - **Web depends on `../src/scenarios` at runtime.** Don't move the scenarios directory without updating `web/lib/scenarios.ts`. The Web app is not buildable in isolation from the root `src/` tree.
+- **Prompt builders are duplicated.** `src/agent.ts::buildSystemAppend` and `web/lib/scenarios.ts::buildSystemPrompt` are intentionally near-duplicates (no monorepo) — keep them in sync. Snapshot tests in `src/__tests__/` and `web/lib/__tests__/` catch structural drift, not content edits to scenario markdown.
+- **Web rate limit is single-instance.** `rateBuckets` is in-process Map; restart clears it, multiple replicas don't share. Replace with Redis for real multi-instance deployment.

@@ -133,6 +133,11 @@ export function buildRequirement(
   return lines.join("\n\n");
 }
 
+// Intentionally duplicated from src/agent.ts's buildSystemAppend — the two
+// packages are independent (no workspace), so a shared module isn't possible
+// without converting to a monorepo. Keep this in sync if you change the CLI
+// builder. Differences: Web appends the Web Mode Override; CLI appends an
+// Output Location instruction for the Write tool.
 export function buildSystemPrompt(scenario: Scenario): string {
   const templateBlock = Object.entries(scenario.templates)
     .map(([name, body]) => `### Template: ${name}.md\n\n${body}`)

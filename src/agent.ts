@@ -9,7 +9,11 @@ export interface RunOptions {
   outputDir: string;
 }
 
-function buildSystemAppend(scenario: Scenario, outputDir: string): string {
+// Intentionally duplicated in web/lib/scenarios.ts as buildSystemPrompt — the
+// two packages don't share a workspace, so changes here should be mirrored
+// there. CLI variant ends with an Output Location instruction; Web variant
+// ends with the Web Mode Override.
+export function buildSystemAppend(scenario: Scenario, outputDir: string): string {
   const templateBlock = Object.entries(scenario.templates)
     .map(([name, body]) => `### Template: ${name}.md\n\n${body}`)
     .join("\n\n---\n\n");
@@ -31,7 +35,7 @@ Pick a filename that reflects the document type and topic (e.g. \`prd-bookstore.
 `;
 }
 
-function buildUserPrompt(requirement: string): string {
+export function buildUserPrompt(requirement: string): string {
   return `User requirement:
 ${requirement}
 
@@ -50,6 +54,11 @@ export async function runAgent({ scenario, requirement, outputDir }: RunOptions)
   console.log(`\n[scenario] ${scenario.id} — ${scenario.description}`);
   console.log(`[output]   ${absOutput}\n`);
 
+  const modelOverride = process.env.ANTHROPIC_MODEL;
+  if (modelOverride) {
+    console.log(`[model]    ${modelOverride} (from ANTHROPIC_MODEL)\n`);
+  }
+
   const stream = query({
     prompt: buildUserPrompt(requirement),
     options: {
@@ -59,8 +68,9 @@ export async function runAgent({ scenario, requirement, outputDir }: RunOptions)
         append: buildSystemAppend(scenario, absOutput),
       },
       allowedTools: ["Read", "Write", "Edit", "Glob", "Grep"],
-      cwd: process.cwd(),
+      cwd: absOutput,
       permissionMode: "acceptEdits",
+      ...(modelOverride ? { model: modelOverride } : {}),
     },
   });
 
