@@ -66,7 +66,7 @@ Two registries scan this same directory at runtime:
 - `src/scenarios/registry.ts` — CLI loader. `listScenarios()` requires only `meta.json`.
 - `web/lib/scenarios.ts` — Web loader. `listScenarios()` additionally **requires `form.json`** — scenarios without one are hidden from the web homepage but still usable from the CLI. Resolves the scenarios root via `resolve(__dirname, "..", "..", "src", "scenarios")`, so Web depends on the relative path to the root `src/` tree.
 
-When editing a scenario, remember it powers both surfaces. The system prompt should not assume tool-use ability — Web's `buildSystemPrompt()` appends a **"Web Mode Override"** block forbidding tool-call phrasing and requiring inline Markdown output, but the base system.md text is shared.
+When editing a scenario, remember it powers both surfaces. The system prompt should not assume tool-use ability — Web's `buildSystemPrompt()` appends a **"Web Mode Override"** block that not only forbids tool-call phrasing and requires inline Markdown, but also collapses the three-phase flow: skip the Phase 1 Plan in user-facing output; if clarification is needed ask 1–3 questions and **stop** (no partial draft); after the document, append a "✍️ 审校提示" section listing assumptions and `<TBD: ...>` placeholders. The base `system.md` text is shared, so any new instructions there need to coexist with this override.
 
 ### CLI runtime model
 
@@ -85,7 +85,9 @@ Default output dir is `./output/` (gitignored). The agent is told to save into t
 2. Validates required fields (respecting `showIf` conditional visibility) via the form schema.
 3. `buildRequirement()` formats form values into a labeled requirement string.
 4. `buildSystemPrompt()` composes scenario system.md + style + templates + the Web Mode Override.
-5. Streams `messages.stream()` text deltas as SSE `text` events, ending with a `done` event carrying token usage.
+5. Streams `messages.stream()` text deltas as SSE events: `start` (scenario id), `text` (deltas), `done` (token usage + stop reason), or `error` (message).
+
+The Anthropic client is constructed in `web/lib/anthropic.ts`; a missing `ANTHROPIC_API_KEY` throws there and surfaces as a 503 from the route.
 
 Model / temperature / max tokens are **per-scenario**, set in `form.json` (e.g. `novel` uses higher temperature). The form schema also describes the field UI: `type`, `placeholder`, `required`, `rows`, `showIf` for conditional fields, etc. — see `web/lib/scenarios.ts` `FormField` for the contract.
 
