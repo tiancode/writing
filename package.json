@@ -1,0 +1,27 @@
+{
+  "name": "@tiancode/writing-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Scenario-driven AI writing agent: project docs, bid docs, novels",
+  "type": "module",
+  "bin": {
+    "writing-agent": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
