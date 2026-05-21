@@ -74,9 +74,16 @@ src/scenarios/<id>/
 - 新增模板：技术应答、商务应答、资质响应、偏离表
 
 ### 小说（novel）
-- 新增模块：人物卡 / 世界观 / 已写章节摘要的持久化存储
-- 新增工具：一致性检查（人物行为、时间线、地理）
-- 新增流程：大纲 → 章节细纲 → 草稿 → 自审，每个章节增量更新摘要
+
+已落地（CLI + Web 双入口）：
+- 持久化状态：CLI 维护 `state/`（outline / worldview / characters / chapter-summaries / glossary）。Web 无文件系统，通过表单粘贴上下文。
+- 章节模式强制流程：连续性预检（preflight）→ 章节大纲 → 草稿 → 一致性自审（用 `consistency-check.md` 模板）→ 回写 state。
+- 独立的 **Summary 模式**：给定章节正文，产出一条结构化摘要（CLI 追加到 `chapter-summaries.md`；Web 直接返回）。
+- 独立的 **Check 模式**：给定章节草稿 + 对照素材，按 `consistency-check.md` 模板逐项审计（时间线 / 人物 / 视角 / 设定 / 伏笔 / 风格漂移 / 修订优先级）。
+
+后续可继续扩展：
+- 自动跨章扫描悬空伏笔（CLI 可基于 `state/chapter-summaries.md` 的 `<SEED>` / `<PAYOFF>` 标注做静态分析）
+- 多 agent 拆分：让 review agent 独立 LLM 调用，避免"自审 = 自欺欺人"
 
 ### 长文档记忆与 RAG（横向能力）
 - 用户素材库（历史文档、行业模板）向量检索
