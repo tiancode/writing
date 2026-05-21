@@ -1,6 +1,6 @@
 {
   "title": "小说创作",
-  "subtitle": "大纲、章节、人物卡",
+  "subtitle": "大纲、章节、人物卡、增量摘要、一致性检查",
   "icon": "📖",
   "model": "claude-sonnet-4-6",
   "temperature": 0.8,
@@ -13,7 +13,9 @@
       "options": [
         "建立大纲（新小说）",
         "写一章正文",
-        "写一张人物卡"
+        "写一张人物卡",
+        "为已写章节生成增量摘要",
+        "对一章做一致性检查"
       ],
       "required": true
     },
@@ -110,6 +112,69 @@
       "required": true,
       "rows": 5,
       "showIf": { "field": "mode", "equals": "写一张人物卡" }
+    },
+    {
+      "id": "summary_chapter_number",
+      "label": "章节序号",
+      "type": "text",
+      "placeholder": "如：5",
+      "required": true,
+      "showIf": { "field": "mode", "equals": "为已写章节生成增量摘要" }
+    },
+    {
+      "id": "summary_chapter_text",
+      "label": "本章正文",
+      "type": "textarea",
+      "placeholder": "粘贴本章全文。模型会按摘要模板产出一条结构化条目，可直接追加到你的摘要库",
+      "required": true,
+      "rows": 12,
+      "showIf": { "field": "mode", "equals": "为已写章节生成增量摘要" },
+      "help": "粘贴完整正文以便准确提取时间锚点、伏笔、状态变化"
+    },
+    {
+      "id": "summary_prior_entries",
+      "label": "已有摘要 / 大纲（可选）",
+      "type": "textarea",
+      "placeholder": "粘贴前几章的摘要条目和大纲片段，帮助模型识别正在回收的伏笔",
+      "required": false,
+      "rows": 6,
+      "showIf": { "field": "mode", "equals": "为已写章节生成增量摘要" }
+    },
+    {
+      "id": "check_chapter_number",
+      "label": "被检查的章节",
+      "type": "text",
+      "placeholder": "如：第 5 章",
+      "required": true,
+      "showIf": { "field": "mode", "equals": "对一章做一致性检查" }
+    },
+    {
+      "id": "check_chapter_text",
+      "label": "章节草稿",
+      "type": "textarea",
+      "placeholder": "粘贴待检查的章节文本",
+      "required": true,
+      "rows": 12,
+      "showIf": { "field": "mode", "equals": "对一章做一致性检查" }
+    },
+    {
+      "id": "check_state_bundle",
+      "label": "对照素材（大纲 / 人物卡 / 前情摘要 / 世界观）",
+      "type": "textarea",
+      "placeholder": "把相关人物卡、最近 3-5 条摘要、大纲节拍、世界观规则一起粘贴进来。越完整，检查越严密",
+      "required": true,
+      "rows": 10,
+      "showIf": { "field": "mode", "equals": "对一章做一致性检查" },
+      "help": "Web 模式无文件系统，必须把上下文粘贴进来 — 否则只能做模糊的语感检查"
+    },
+    {
+      "id": "check_focus",
+      "label": "重点关注（可选）",
+      "type": "textarea",
+      "placeholder": "如：着重检查主角口吻是否漂移、第 3 章伏笔是否已回收",
+      "required": false,
+      "rows": 3,
+      "showIf": { "field": "mode", "equals": "对一章做一致性检查" }
     }
   ]
 }

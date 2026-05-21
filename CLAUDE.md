@@ -50,6 +50,8 @@ The agent's job is structured as:
 
 The flow lives in the user prompt assembled in `src/agent.ts` (`buildUserPrompt`) and in the per-scenario `prompts/system.md`. The system prompt is composed by appending style guide + all templates + output-location instructions to the scenario's system.md.
 
+Some scenarios define **additional operating modes** in their `system.md` that override or specialize this flow. `novel` is the main example: alongside Setup / Chapter / Revision, it defines **Summary mode** (produce one structured `chapter-summaries.md` entry for an already-written chapter) and **Check mode** (produce a `consistency-check.md` report against a draft + pasted state). These modes are exposed in `form.json` as additional `mode` options so the Web UI can route to them; in CLI the model detects intent from the requirement text.
+
 ### Scenario plugin layout
 
 ```
