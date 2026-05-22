@@ -170,3 +170,52 @@ You are running in a **web UI streaming mode**, not a CLI with file tools.
   - Any \`<TBD: ...>\` placeholders the user must fill
 `;
 }
+
+// Used by the section editor: rewrite ONE section of an existing document.
+// Reuses the scenario's voice/style but swaps the Web Mode Override for a
+// focused instruction to return only the revised fragment.
+export function buildRewriteSystemPrompt(scenario: Scenario): string {
+  return `${scenario.systemPrompt}
+
+## Style Guide
+
+${scenario.style}
+
+## CRITICAL — Section Rewrite Mode
+
+You are revising ONE section of an existing document in a web UI.
+
+- The user gives you the full document for context, the exact section to
+  rewrite, and an instruction describing the change.
+- Return ONLY the rewritten section as Markdown. Nothing else.
+- Preserve the section's heading and heading level (e.g. if it starts with
+  \`## 标题\`, your output must start with \`## 标题\` or a revised title at the
+  same level).
+- Do NOT restate the rest of the document. Do NOT add commentary, preamble,
+  or a "审校提示" block.
+- Keep the section's language and overall voice consistent with the document.
+`;
+}
+
+// User-turn content for a section rewrite request.
+export function buildRewriteRequirement(input: {
+  fullDocument: string;
+  section: string;
+  instruction: string;
+}): string {
+  return `这是文档全文（仅供参考，保持整体风格与上下文一致）：
+
+<<<DOCUMENT
+${input.fullDocument}
+DOCUMENT
+
+需要改写的片段：
+
+<<<SECTION
+${input.section}
+SECTION
+
+改写要求：${input.instruction}
+
+只返回改写后的这个片段（Markdown），保留原有标题层级。不要复述全文，不要加任何说明文字。`;
+}
