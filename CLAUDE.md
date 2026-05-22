@@ -91,19 +91,28 @@ Default output dir `./output/` is gitignored.
 ### Web runtime model
 
 `web/app/api/generate/route.ts` is a Node-runtime SSE endpoint (not Edge — needed for streaming + the Anthropic SDK). Flow:
-1. Per-IP rate limit (in-memory, single-instance only — `RATE_LIMIT_PER_HOUR`).
-2. Receives `{ scenarioId, formData, followups? }`.
-3. Validates required fields (respecting `showIf` conditional visibility), input character cap (`MAX_INPUT_CHARS`), and followup count cap (`MAX_FOLLOWUPS`).
+1. Resolve the logged-in user from the session cookie (`getUserFromRequest`). **Anonymous** → per-IP in-memory rate limit (`RATE_LIMIT_PER_HOUR`). **Logged-in** → skip IP limit, instead require `credits >= MIN_BALANCE_TO_START` (402 if not).
+2. Receives `{ scenarioId, formData, followups? }` for normal generation, OR `{ scenarioId, rewrite: { fullDocument, section, instruction } }` for **section rewrite** (the section editor). `rewrite` swaps `buildSystemPrompt` for `buildRewriteSystemPrompt` and the message for `buildRewriteRequirement`, returning ONLY the revised section.
+3. Validates required fields (respecting `showIf`), input char cap (`MAX_INPUT_CHARS` / `MAX_REWRITE_CHARS`), and followup cap (`MAX_FOLLOWUPS`).
 4. `buildRequirement()` formats form values into a labeled requirement string.
-5. `buildSystemPrompt()` composes scenario system.md + style + templates + the Web Mode Override. The system prompt is sent with `cache_control: { type: "ephemeral" }` for prompt caching — repeated calls to the same scenario reuse the system prompt cache.
+5. `buildSystemPrompt()` composes scenario system.md + style + templates + the Web Mode Override, sent with `cache_control: { type: "ephemeral" }` for prompt caching.
 6. Builds messages array: initial user requirement, then for each followup: `assistant(prev output)` + `user(new instruction)`.
-7. Streams `messages.stream()` text deltas as SSE events: `start`, `text`, `done` (carries input/output/cache tokens), or `error`.
+7. Streams `messages.stream()` text deltas as SSE events: `start` (carries `kind`), `text`, `done`, or `error`. On `done`, **logged-in users are charged** via `chargeUsage` (credits deducted + a `usage_events` row); the `done` event carries `creditsCharged` / `creditsRemaining` (null for anonymous). Charging happens only after `finalMessage()` succeeds — errored runs are free.
 
 The Anthropic client is constructed in `web/lib/anthropic.ts`; a missing `ANTHROPIC_API_KEY` throws there and surfaces as a 503 from the route.
 
 Model / temperature / max tokens are **per-scenario** (set in `form.json`). Model can be globally overridden via `ANTHROPIC_MODEL` env var. The form schema also describes the field UI: `type`, `placeholder`, `required`, `rows`, `showIf` for conditional fields — see `web/lib/scenarios.ts` `FormField`.
 
-Client (`web/app/[scenario]/scenario-form.tsx`) uses `useDeferredValue(output)` for the markdown renderer to keep streaming smooth on long documents. The followup textarea appears after `done` and lets the user iteratively refine without re-filling the form (capped at 5 rounds to bound context growth).
+Client (`web/app/[scenario]/scenario-form.tsx`) uses `useDeferredValue(output)` for the markdown renderer to keep streaming smooth on long documents. The followup textarea appears after `done` and lets the user iteratively refine without re-filling the form (capped at 5 rounds). When `done`, the read-only renderer is swapped for `SectionEditor` (per-paragraph "改写"). The shared SSE consume/cancel logic lives in `web/lib/sse-client.ts` (`streamGenerate`), reused by the form and the section editor.
+
+### Web persistence / auth / billing (self-contained stack)
+
+- **DB**: `web/lib/db.ts` uses Node 22's built-in `node:sqlite` (no native build, no npm dep). Loaded via `createRequire` because `node:sqlite` is experimental and absent from vite/webpack builtin lists — a static `import "node:sqlite"` gets mis-resolved by both vitest and Next, the `createRequire` indirection sidesteps both. Path from `DATABASE_PATH` (default `web/data/app.db`, gitignored; `:memory:` for tests). Schema auto-migrates on first `getDb()`.
+- **Auth** (`web/lib/auth.ts`): email+password, scrypt salted hash via `node:crypto` (no dep). Sessions are random tokens in a `sessions` table, set as an httpOnly cookie (`SESSION_COOKIE`). `web/lib/session.ts` resolves the user from a `NextRequest` (route handlers) or `cookies()` (server components).
+- **Billing** (`web/lib/billing.ts`, pure): `creditsForUsage` weights output > input, cache reads ~free. New users get `INITIAL_CREDITS`. `web/lib/repository.ts::chargeUsage` deducts (clamped at 0) and logs a `usage_events` row.
+- **Repository** (`web/lib/repository.ts`): projects + documents CRUD (all scoped by `user_id` for ownership) + credit ops.
+- **Client auth state**: `web/components/auth-context.tsx` (`AuthProvider`/`useAuth`) wraps the app in `layout.tsx`; `AuthNav` shows balance + logout; `/login` hosts `AuthForm`; `/projects` lists saved docs; `/documents/[id]` is the single-doc editor (reuses `SectionEditor`).
+- This stack is intentionally swappable — see web/README.md "升级到生产栈" for the Postgres / Auth.js / Stripe migration map. **No new npm dependencies were added.**
 
 ## Build artifacts
 

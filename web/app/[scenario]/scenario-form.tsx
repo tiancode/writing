@@ -1,7 +1,11 @@
 "use client";
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import MarkdownView from "@/components/MarkdownView";
+import SectionEditor from "@/components/SectionEditor";
+import { useAuth } from "@/components/auth-context";
+import { streamGenerate, type DoneInfo } from "@/lib/sse-client";
 import type { FormField } from "@/lib/scenarios";
 
 interface Props {
@@ -10,6 +14,7 @@ interface Props {
 }
 
 type Status = "idle" | "generating" | "done" | "error";
+type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 interface Followup {
   output: string;
@@ -22,6 +27,7 @@ function shouldShow(field: FormField, data: Record<string, string>): boolean {
 }
 
 export default function ScenarioForm({ scenarioId, fields }: Props) {
+  const { user, refresh } = useAuth();
   const [formData, setFormData] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
     for (const f of fields) {
@@ -35,14 +41,12 @@ export default function ScenarioForm({ scenarioId, fields }: Props) {
   const deferredOutput = useDeferredValue(output);
   const [status, setStatus] = useState<Status>("idle");
   const [errorMsg, setErrorMsg] = useState("");
-  const [usage, setUsage] = useState<{
-    input: number;
-    output: number;
-    cacheRead: number;
-    cacheCreate: number;
-  } | null>(null);
+  const [usage, setUsage] = useState<DoneInfo | null>(null);
   const [followups, setFollowups] = useState<Followup[]>([]);
   const [followupDraft, setFollowupDraft] = useState("");
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [savedDocId, setSavedDocId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const outputRef = useRef<HTMLDivElement>(null);
 
@@ -67,80 +71,25 @@ export default function ScenarioForm({ scenarioId, fields }: Props) {
     setErrorMsg("");
     setUsage(null);
     setStatus("generating");
+    setSaveStatus("idle");
+    setSavedDocId(null);
 
     const controller = new AbortController();
     abortRef.current = controller;
-    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
-    let receivedDone = false;
-    let accumulated = "";
 
     try {
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scenarioId,
-          formData,
-          followups: currentFollowups,
-        }),
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        const text = await res.text();
-        try {
-          const json = JSON.parse(text);
-          throw new Error(json.error || text);
-        } catch {
-          throw new Error(text || `HTTP ${res.status}`);
+      await streamGenerate(
+        { scenarioId, formData, followups: currentFollowups },
+        {
+          signal: controller.signal,
+          onText: setOutput,
+          onDone: (info) => {
+            setUsage(info);
+            setStatus("done");
+            if (user) refresh();
+          },
         }
-      }
-
-      if (!res.body) throw new Error("No response body");
-
-      reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      outer: while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        let idx;
-        while ((idx = buffer.indexOf("\n\n")) !== -1) {
-          const eventChunk = buffer.slice(0, idx);
-          buffer = buffer.slice(idx + 2);
-
-          if (!eventChunk.startsWith("data: ")) continue;
-          const payload = eventChunk.slice(6);
-          try {
-            const evt = JSON.parse(payload);
-            if (evt.type === "text") {
-              accumulated += evt.content;
-              setOutput(accumulated);
-            } else if (evt.type === "done") {
-              receivedDone = true;
-              setUsage({
-                input: evt.inputTokens,
-                output: evt.outputTokens,
-                cacheRead: evt.cacheReadTokens ?? 0,
-                cacheCreate: evt.cacheCreateTokens ?? 0,
-              });
-              setStatus("done");
-              break outer;
-            } else if (evt.type === "error") {
-              throw new Error(evt.message);
-            }
-          } catch (parseErr) {
-            console.warn("Failed to parse SSE event:", payload, parseErr);
-          }
-        }
-      }
-
-      if (!receivedDone) {
-        throw new Error("连接中断，生成未完成");
-      }
+      );
     } catch (err) {
       if ((err as Error).name === "AbortError") {
         setStatus("idle");
@@ -149,13 +98,6 @@ export default function ScenarioForm({ scenarioId, fields }: Props) {
         setStatus("error");
       }
     } finally {
-      if (reader) {
-        try {
-          await reader.cancel();
-        } catch {
-          // already closed
-        }
-      }
       abortRef.current = null;
     }
   }
@@ -171,8 +113,7 @@ export default function ScenarioForm({ scenarioId, fields }: Props) {
     e.preventDefault();
     const instruction = followupDraft.trim();
     if (!instruction) return;
-    const previousOutput = output;
-    const nextFollowups = [...followups, { output: previousOutput, instruction }];
+    const nextFollowups = [...followups, { output, instruction }];
     setFollowups(nextFollowups);
     setFollowupDraft("");
     await runGeneration(nextFollowups);
@@ -180,6 +121,40 @@ export default function ScenarioForm({ scenarioId, fields }: Props) {
 
   function handleStop() {
     abortRef.current?.abort();
+  }
+
+  function deriveTitle(): string {
+    const candidate =
+      formData.title ||
+      fields
+        .map((f) => formData[f.id])
+        .find((v) => v && v.trim() && v.length < 60);
+    const base = candidate?.trim() || scenarioId;
+    return base.length > 50 ? base.slice(0, 50) : base;
+  }
+
+  async function handleSave() {
+    setSaveStatus("saving");
+    setSaveError("");
+    try {
+      const res = await fetch("/api/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scenarioId,
+          title: deriveTitle(),
+          content: output,
+          formData,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "保存失败");
+      setSavedDocId(data.document.id);
+      setSaveStatus("saved");
+    } catch (err) {
+      setSaveError((err as Error).message);
+      setSaveStatus("error");
+    }
   }
 
   function handleDownload() {
@@ -212,9 +187,7 @@ export default function ScenarioForm({ scenarioId, fields }: Props) {
               className="block text-sm font-medium mb-1.5"
             >
               {field.label}
-              {field.required && (
-                <span className="text-red-500 ml-1">*</span>
-              )}
+              {field.required && <span className="text-red-500 ml-1">*</span>}
             </label>
 
             {field.type === "text" && (
@@ -283,6 +256,15 @@ export default function ScenarioForm({ scenarioId, fields }: Props) {
             </button>
           )}
         </div>
+
+        {!user && (
+          <p className="text-xs text-[var(--color-muted)]">
+            <Link href="/login" className="text-[var(--color-accent)] underline">
+              登录
+            </Link>
+            后可保存文档、按额度使用，并对生成结果做分段改写。
+          </p>
+        )}
       </form>
 
       {/* Right: Output */}
@@ -298,6 +280,19 @@ export default function ScenarioForm({ scenarioId, fields }: Props) {
           </h2>
           {status === "done" && (
             <div className="flex gap-2 text-sm">
+              {user && (
+                <button
+                  onClick={handleSave}
+                  disabled={saveStatus === "saving"}
+                  className="px-3 py-1 border border-[var(--color-border)] rounded hover:bg-stone-50 disabled:opacity-50"
+                >
+                  {saveStatus === "saving"
+                    ? "保存中…"
+                    : saveStatus === "saved"
+                    ? "已保存 ✓"
+                    : "保存"}
+                </button>
+              )}
               <button
                 onClick={handleCopy}
                 className="px-3 py-1 border border-[var(--color-border)] rounded hover:bg-stone-50"
@@ -314,9 +309,21 @@ export default function ScenarioForm({ scenarioId, fields }: Props) {
           )}
         </div>
 
+        {saveStatus === "saved" && savedDocId && (
+          <p className="text-xs text-green-700">
+            已保存到我的文档 ·{" "}
+            <Link href={`/documents/${savedDocId}`} className="underline">
+              打开编辑
+            </Link>
+          </p>
+        )}
+        {saveStatus === "error" && (
+          <p className="text-xs text-red-600">{saveError}</p>
+        )}
+
         <div
           ref={outputRef}
-          className="bg-white border border-[var(--color-border)] rounded-lg p-5 min-h-[500px] max-h-[70vh] overflow-y-auto"
+          className="bg-white border border-[var(--color-border)] rounded-lg p-3 min-h-[500px] max-h-[70vh] overflow-y-auto"
         >
           {status === "idle" && !output && (
             <p className="text-[var(--color-muted)] text-sm text-center pt-20">
@@ -329,22 +336,43 @@ export default function ScenarioForm({ scenarioId, fields }: Props) {
               <p>{errorMsg}</p>
             </div>
           )}
-          {output && (
-            <div className="md-view">
+          {/* While streaming: plain (deferred) render. When done: section editor. */}
+          {output && status !== "done" && (
+            <div className="md-view px-2">
               <MarkdownView source={deferredOutput} />
               {busy && (
                 <span className="inline-block w-2 h-4 bg-[var(--color-accent)] animate-pulse align-middle ml-0.5" />
               )}
             </div>
           )}
+          {output && status === "done" && (
+            <SectionEditor
+              content={output}
+              scenarioId={scenarioId}
+              onContentChange={setOutput}
+            />
+          )}
         </div>
+
+        {status === "done" && (
+          <p className="text-xs text-[var(--color-muted)]">
+            提示：把鼠标移到任意段落上，点&ldquo;改写&rdquo;可只重写这一段。
+          </p>
+        )}
 
         {usage && (
           <div className="text-xs text-[var(--color-muted)] text-right space-x-2">
-            <span>输入 {usage.input} tokens</span>
-            <span>· 输出 {usage.output} tokens</span>
-            {usage.cacheRead > 0 && <span>· 缓存命中 {usage.cacheRead}</span>}
-            {usage.cacheCreate > 0 && <span>· 缓存写入 {usage.cacheCreate}</span>}
+            <span>输入 {usage.inputTokens} tokens</span>
+            <span>· 输出 {usage.outputTokens} tokens</span>
+            {usage.cacheReadTokens > 0 && (
+              <span>· 缓存命中 {usage.cacheReadTokens}</span>
+            )}
+            {usage.creditsCharged != null && (
+              <span>· 消耗 {usage.creditsCharged} 额度</span>
+            )}
+            {usage.creditsRemaining != null && (
+              <span>· 剩余 {usage.creditsRemaining}</span>
+            )}
           </div>
         )}
 
@@ -353,11 +381,11 @@ export default function ScenarioForm({ scenarioId, fields }: Props) {
             onSubmit={handleFollowupSubmit}
             className="border border-[var(--color-border)] rounded-lg p-4 bg-[var(--color-accent-soft)]/30 space-y-3"
           >
-            <label className="block text-sm font-medium">想改什么？</label>
+            <label className="block text-sm font-medium">整体续写 / 修改</label>
             <textarea
               value={followupDraft}
               onChange={(e) => setFollowupDraft(e.target.value)}
-              placeholder="例如：第二章压缩到 2000 字、把语气改得更正式、把章节 3 改成第一人称…"
+              placeholder="对整篇的指令，例如：第二章压缩到 2000 字、把语气改得更正式…"
               rows={3}
               className="w-full px-3 py-2 border border-[var(--color-border)] rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent resize-y text-sm"
             />

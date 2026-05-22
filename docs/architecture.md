@@ -126,10 +126,35 @@ CLI 的 `query()` 使用 `cwd: <outputDir>` + `permissionMode: "acceptEdits"`
 
 ## Web 输入 / 速率限制
 
-`web/app/api/generate/route.ts` 包含三层保护，仅适合单实例部署：
+`web/app/api/generate/route.ts` 对**匿名**请求包含三层保护，仅适合单实例部署：
 
 - 单 IP 每小时请求数上限（内存桶，进程重启即清空）
 - 单次请求总字符上限（formData + 续写历史）
 - 单会话续写轮数上限
 
-生产环境多实例部署应替换为 Redis 限流 + 边缘 WAF。
+**登录用户**改用额度计费替代 IP 限流（见下）。生产环境多实例部署应替换为 Redis 限流 + 边缘 WAF。
+
+## Web 账号 / 持久化 / 计费（自包含栈）
+
+为让多文档保存、账号、计费在单机/沙箱即可跑通，Web 端用了一套**零额外依赖**的自包含实现，
+全部基于 Node 内置能力（`node:sqlite` + `node:crypto`）：
+
+| 层 | 文件 | 说明 |
+| --- | --- | --- |
+| 存储 | `web/lib/db.ts` | `node:sqlite` 单文件库（`DATABASE_PATH`，默认 `web/data/app.db`），首次访问自动建表。因 `node:sqlite` 是实验特性、不在 vite/webpack 的 builtin 列表里，用 `createRequire` 运行时加载以规避两套打包器的误解析。 |
+| 鉴权 | `web/lib/auth.ts` | 邮箱+密码（scrypt 加盐哈希），会话 token 存表 + httpOnly Cookie。`web/lib/session.ts` 从请求 / Cookie 解析当前用户。 |
+| 计费 | `web/lib/billing.ts`（纯函数） | `creditsForUsage` 按 token 折算额度（输出权重 > 输入，缓存命中近免费）。新用户发 `INITIAL_CREDITS`。 |
+| 数据访问 | `web/lib/repository.ts` | projects / documents 的 CRUD（全部按 `user_id` 限定归属）+ `chargeUsage`（扣额度、记 `usage_events` 流水）。 |
+
+请求路径上：匿名 = IP 限流、不可保存；登录 = 跳过 IP 限流、按额度扣费、可保存/重开文档。
+
+### 分段改写
+
+`web/components/SectionEditor.tsx` 把生成结果按 Markdown 标题切成段（`web/lib/markdown-sections.ts`
+的纯函数 `splitSections` / `spliceSection`），逐段提供"改写"。改写复用 `/api/generate` 的 `rewrite`
+形态——发整篇 + 选中段 + 指令，模型只返回改写后的该段，再 splice 回原文。表单页与单文档编辑页共用此组件。
+
+### 升级到生产栈
+
+各层都是可替换的接缝：DB 换 Postgres（只动 `lib/db.ts` 的 SQL 句柄）、鉴权接 Auth.js/OAuth、
+计费把余额来源换成 Stripe（`creditsForUsage` 保留为用量计量）。详见 `web/README.md`。
